@@ -1,4 +1,4 @@
-module github.com/caboose-mcp/eml
+module github.com/caboose-mcp/meml
 
 go 1.21
 

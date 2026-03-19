@@ -1,6 +1,6 @@
-# eml
+# meml
 
-**EML — Emoji Markup Language**
+**MEML — Meme Markup Language**
 
 A configuration language like TOML, with first-class emoji support.
 Emoji can be section decorators, key annotations, pure keys, or value atoms.
@@ -9,7 +9,7 @@ Emoji can be section decorators, key annotations, pure keys, or value atoms.
 
 ## Syntax at a glance
 
-```eml
+```meml
 # hash comment
 💬 emoji comment
 
@@ -71,8 +71,8 @@ These are conventions — the parser stores annotations but does not enforce the
 
 ## Value types
 
-| EML | Kind | Example |
-|-----|------|---------|
+| MEML | Kind | Example |
+|------|------|---------|
 | Double-quoted string | `KindString` | `"hello world"` |
 | Single-quoted string | `KindString` | `'no\escape'` |
 | Triple-quoted string | `KindString` | `"""has "quotes" inside"""` |
@@ -92,21 +92,21 @@ These are conventions — the parser stores annotations but does not enforce the
 ### Install
 
 ```sh
-go install github.com/caboose-mcp/eml/cmd/eml@latest
+go install github.com/caboose-mcp/meml/cmd/meml@latest
 ```
 
 ### validate — syntax check
 
 ```sh
-eml validate config.eml
-# ✓ config.eml  (3 sections, 14 keys)
+meml validate config.meml
+# ✓ config.meml  (3 sections, 14 keys)
 # exits non-zero on errors with line numbers
 ```
 
 ### dump — JSON output (with syntax highlighting)
 
 ```sh
-eml dump config.eml
+meml dump config.meml
 ```
 
 ```json
@@ -128,19 +128,19 @@ eml dump config.eml
 }
 ```
 
-### pretty — colorized EML view (with typewriter animation)
+### pretty — colorized MEML view (with typewriter animation)
 
 ```sh
-eml pretty config.eml
+meml pretty config.meml
 ```
 
-Renders the parsed document back as colorized EML — emoji annotations and
+Renders the parsed document back as colorized MEML — emoji annotations and
 section decorations are highlighted, values are colored by type.
 
 ### env — shell exports
 
 ```sh
-eml env config.eml
+meml env config.meml
 ```
 
 ```sh
@@ -159,7 +159,7 @@ SLACK_TOKEN=xoxb-...
 Feed to caboose-mcp:
 
 ```sh
-export $(eml env caboose-mcp.eml | xargs)
+export $(meml env caboose-mcp.meml | xargs)
 ./caboose-mcp
 ```
 
@@ -168,7 +168,7 @@ export $(eml env caboose-mcp.eml | xargs)
 ## Go library
 
 ```go
-import "github.com/caboose-mcp/eml/parser"
+import "github.com/caboose-mcp/meml/parser"
 
 doc, err := parser.Parse(src)
 if err != nil {
@@ -225,4 +225,4 @@ go test ./...
 ## See also
 
 - [SPEC.md](SPEC.md) — full language grammar and specification
-- [example.eml](example.eml) — caboose-mcp config example
+- [example.meml](example.meml) — caboose-mcp config example

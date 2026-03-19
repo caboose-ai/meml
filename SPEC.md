@@ -1,7 +1,7 @@
-# EML — Emoji Markup Language Specification
+# MEML — Meme Markup Language Specification
 
 **Version:** 0.1
-**File extension:** `.eml`
+**File extension:** `.meml`
 **Encoding:** UTF-8 (required)
 **Line endings:** LF or CRLF
 
@@ -9,7 +9,7 @@
 
 ## Overview
 
-EML is a configuration language inspired by TOML with first-class emoji support.
+MEML is a configuration language inspired by TOML with first-class emoji support.
 Emoji can appear as:
 
 - **Section decorators** — `[🔧 server]`
@@ -23,7 +23,7 @@ Emoji can appear as:
 
 ## Comments
 
-```eml
+```meml
 # hash comment — ignored to end of line
 💬 emoji comment — any line whose first token is 💬
 ```
@@ -36,7 +36,7 @@ Inline comments are not supported. Use a `#` on a separate line before the key.
 
 Sections group key-value pairs, like TOML tables.
 
-```eml
+```meml
 [name]           # plain section
 [🔧 name]        # section with emoji decoration (stored as metadata)
 [🔑]             # pure emoji section — emoji becomes the section name
@@ -49,7 +49,7 @@ Keys declared before any section header belong to the **root section** (name `""
 
 ## Keys
 
-```eml
+```meml
 key = value              # plain identifier: [a-zA-Z_][a-zA-Z0-9_.-]*
 🔑 key = value           # emoji annotation + identifier key
 🏠 = value               # pure emoji key
@@ -80,7 +80,7 @@ These are conventions only — the parser stores annotations but does not enforc
 
 ### Strings
 
-```eml
+```meml
 name    = "hello world"      # double-quoted; supports escape sequences
 name    = 'literal string'   # single-quoted; no escape processing
 name    = bareword           # bare word (no spaces or structural chars)
@@ -91,7 +91,7 @@ Supported escape sequences in double-quoted strings: `\n \t \r \\ \"  \'`
 
 ### Numbers
 
-```eml
+```meml
 port  = 8080       # integer
 count = -5         # negative integer
 ratio = 3.14       # float
@@ -100,7 +100,7 @@ temp  = -0.5       # negative float
 
 ### Booleans
 
-```eml
+```meml
 enabled  = true    # keyword
 debug    = false   # keyword
 active   = ✅      # emoji shorthand for true
@@ -109,7 +109,7 @@ inactive = ❌      # emoji shorthand for false
 
 ### Null
 
-```eml
+```meml
 value = null   # keyword
 value = ~      # YAML-style shorthand
 ```
@@ -119,7 +119,7 @@ value = ~      # YAML-style shorthand
 Any emoji that is not `✅` or `❌` is treated as a string value tagged with
 kind `emoji`. This allows semantic enum-like values:
 
-```eml
+```meml
 status = 🟢   # green / ok
 level  = 🔴   # red / critical
 mood   = 😎
@@ -127,7 +127,7 @@ mood   = 😎
 
 ### Arrays
 
-```eml
+```meml
 tags  = [web, api, v2]
 temps = [55, 60, 65]
 mixed = ["hello", 42, ✅, 🟢]   # mixed types allowed
@@ -137,7 +137,7 @@ Trailing commas are allowed. Arrays must be on a single line.
 
 ### Inline tables
 
-```eml
+```meml
 db = { host = "localhost", port = 5432 }
 ```
 
@@ -147,8 +147,8 @@ Inline tables must be on a single line. Nested inline tables are allowed.
 
 ## Full example
 
-```eml
-# caboose-mcp.eml
+```meml
+# caboose-mcp.meml
 
 claude_dir = ~/.claude
 

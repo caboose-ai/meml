@@ -10,7 +10,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/caboose-mcp/eml/parser"
+	"github.com/caboose-mcp/meml/parser"
 )
 
 // ── styles ────────────────────────────────────────────────────────────────────
@@ -110,13 +110,13 @@ func typewrite(s string) {
 
 // ── usage ─────────────────────────────────────────────────────────────────────
 
-const usage = `eml — Emoji Markup Language
+const usage = `meml — Meme Markup Language
 
-  eml validate <file>            Check syntax; exits 0 if valid
-  eml dump <file>                Pretty-print as JSON
-  eml pretty <file>              Colorized EML view
-  eml env <file>                 KEY=VALUE exports (for shell / dotenv)
-  eml help                       Show this message
+  meml validate <file>           Check syntax; exits 0 if valid
+  meml dump <file>               Pretty-print as JSON
+  meml pretty <file>             Colorized MEML view
+  meml env <file>                KEY=VALUE exports (for shell / dotenv)
+  meml help                      Show this message
 
 Flags (place anywhere in the command):
   --no-animate                   Disable spinner and typewriter effect

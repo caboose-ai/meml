@@ -1,6 +1,6 @@
-# caboose-mcp.eml
-# Example EML config for the caboose-mcp server
-# Emoji Markup Language — https://github.com/caboose-mcp/eml
+# caboose-mcp.meml
+# Example MEML config for the caboose-mcp server
+# Meme Markup Language — https://github.com/caboose-mcp/meml
 
 # Root-level keys (no section)
 claude_dir = ~/.claude
