@@ -36,9 +36,15 @@ var (
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
+// noAnimate disables spinner and typewriter when true.
+var noAnimate bool
+
 // ── terminal detection ────────────────────────────────────────────────────────
 
 func isTTY() bool {
+	if noAnimate {
+		return false
+	}
 	fi, err := os.Stderr.Stat()
 	if err != nil {
 		return false
@@ -106,17 +112,30 @@ func typewrite(s string) {
 
 const usage = `eml — Emoji Markup Language
 
-  eml validate <file>   Check syntax; exits 0 if valid
-  eml dump <file>       Pretty-print as JSON
-  eml pretty <file>     Colorized EML view
-  eml env <file>        KEY=VALUE exports (for shell / dotenv)
-  eml help              Show this message
+  eml validate <file>            Check syntax; exits 0 if valid
+  eml dump <file>                Pretty-print as JSON
+  eml pretty <file>              Colorized EML view
+  eml env <file>                 KEY=VALUE exports (for shell / dotenv)
+  eml help                       Show this message
+
+Flags (place anywhere in the command):
+  --no-animate                   Disable spinner and typewriter effect
 `
 
 // ── main ──────────────────────────────────────────────────────────────────────
 
 func main() {
-	args := os.Args[1:]
+	// Strip --no-animate from args wherever it appears.
+	raw := os.Args[1:]
+	args := raw[:0]
+	for _, a := range raw {
+		if a == "--no-animate" {
+			noAnimate = true
+		} else {
+			args = append(args, a)
+		}
+	}
+
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
 		fmt.Print(usage)
 		return
