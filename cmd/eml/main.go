@@ -6,115 +6,393 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
+
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/caboose-mcp/eml/parser"
 )
 
-const usage = `eml — Emoji Markup Language tool
+// ── styles ────────────────────────────────────────────────────────────────────
 
-Usage:
-  eml validate <file>    Check syntax; exit 0 if valid
-  eml dump <file>        Print parsed document as JSON
-  eml env <file>         Print KEY=VALUE exports (for shell/dotenv use)
-  eml help               Show this message
+var (
+	styleOk      = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
+	styleErr     = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+	styleSpinner = lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
+	styleDim     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	styleSec     = lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true)
+	styleAnnot   = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
+	styleKey     = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	styleStr     = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	styleNum     = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
+	styleBoolT   = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
+	styleBoolF   = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+	styleNull    = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
+	styleEmoji   = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	styleEnvKey  = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+	styleEquals  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	styleJSON    = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+)
+
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// ── terminal detection ────────────────────────────────────────────────────────
+
+func isTTY() bool {
+	fi, err := os.Stderr.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
+}
+
+// ── spinner ───────────────────────────────────────────────────────────────────
+
+// withSpinner shows a braille spinner on stderr while fn runs.
+// Spinner is suppressed when stderr is not a terminal (e.g. pipes/CI).
+func withSpinner(label string, fn func() (*parser.Document, error)) (*parser.Document, error) {
+	type result struct {
+		doc *parser.Document
+		err error
+	}
+
+	if !isTTY() {
+		return fn()
+	}
+
+	ch := make(chan result, 1)
+	go func() {
+		doc, err := fn()
+		ch <- result{doc, err}
+	}()
+
+	tick := time.NewTicker(80 * time.Millisecond)
+	defer tick.Stop()
+
+	i := 0
+	fmt.Fprintf(os.Stderr, "  %s  %s", styleSpinner.Render(spinnerFrames[0]), label)
+
+	for {
+		select {
+		case r := <-ch:
+			fmt.Fprintf(os.Stderr, "\r\033[2K") // clear spinner line
+			return r.doc, r.err
+		case <-tick.C:
+			i++
+			fmt.Fprintf(os.Stderr, "\r  %s  %s", styleSpinner.Render(spinnerFrames[i%len(spinnerFrames)]), label)
+		}
+	}
+}
+
+// ── typewriter ────────────────────────────────────────────────────────────────
+
+// typewrite prints each line with a short delay for a subtle "live" feel.
+// Falls back to plain print when stdout is not a terminal.
+func typewrite(s string) {
+	if !isTTY() {
+		fmt.Print(s)
+		return
+	}
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		fmt.Println(line)
+		if i < len(lines)-2 { // skip delay on last blank line
+			time.Sleep(6 * time.Millisecond)
+		}
+	}
+}
+
+// ── usage ─────────────────────────────────────────────────────────────────────
+
+const usage = `eml — Emoji Markup Language
+
+  eml validate <file>   Check syntax; exits 0 if valid
+  eml dump <file>       Pretty-print as JSON
+  eml pretty <file>     Colorized EML view
+  eml env <file>        KEY=VALUE exports (for shell / dotenv)
+  eml help              Show this message
 `
+
+// ── main ──────────────────────────────────────────────────────────────────────
 
 func main() {
 	args := os.Args[1:]
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
 		fmt.Print(usage)
-		os.Exit(0)
+		return
 	}
 
 	cmd := args[0]
-	if cmd != "help" && len(args) < 2 {
-		fmt.Fprintf(os.Stderr, "error: command %q requires a file argument\n", cmd)
+	if len(args) < 2 {
+		fmt.Fprintf(os.Stderr, "error: %q requires a file argument\n", cmd)
 		os.Exit(1)
 	}
+	path := args[1]
 
 	switch cmd {
 	case "validate":
-		runValidate(args[1])
+		runValidate(path)
 	case "dump":
-		runDump(args[1])
+		runDump(path)
+	case "pretty":
+		runPretty(path)
 	case "env":
-		runEnv(args[1])
+		runEnv(path)
 	default:
 		fmt.Fprintf(os.Stderr, "error: unknown command %q\n\n%s", cmd, usage)
 		os.Exit(1)
 	}
 }
 
-func readAndParse(path string) *parser.Document {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error reading %s: %v\n", path, err)
-		os.Exit(1)
-	}
-	doc, err := parser.Parse(string(data))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "parse error in %s: %v\n", path, err)
-		os.Exit(1)
-	}
-	return doc
-}
+// ── commands ──────────────────────────────────────────────────────────────────
 
 func runValidate(path string) {
-	readAndParse(path)
-	fmt.Printf("ok: %s\n", path)
+	doc, err := withSpinner("parsing "+styleDim.Render(path), func() (*parser.Document, error) {
+		data, e := os.ReadFile(path)
+		if e != nil {
+			return nil, e
+		}
+		return parser.Parse(string(data))
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s %s\n  %s\n",
+			styleErr.Render("✗"),
+			path,
+			styleErr.Render(err.Error()),
+		)
+		os.Exit(1)
+	}
+
+	// Count sections and keys
+	keys := 0
+	for _, s := range doc.Sections {
+		keys += len(s.KVs)
+	}
+	secs := len(doc.Sections) - 1 // exclude root
+
+	fmt.Printf("%s %s  %s\n",
+		styleOk.Render("✓"),
+		path,
+		styleDim.Render(fmt.Sprintf("(%d sections, %d keys)", secs, keys)),
+	)
 }
 
 func runDump(path string) {
-	doc := readAndParse(path)
-	out := docToJSON(doc)
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(out); err != nil {
-		fmt.Fprintf(os.Stderr, "json error: %v\n", err)
+	doc, err := withSpinner("parsing "+styleDim.Render(path), func() (*parser.Document, error) {
+		data, e := os.ReadFile(path)
+		if e != nil {
+			return nil, e
+		}
+		return parser.Parse(string(data))
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s %s\n", styleErr.Render("✗"), err.Error())
 		os.Exit(1)
+	}
+
+	out := docToJSONMap(doc)
+	b, _ := json.MarshalIndent(out, "", "  ")
+
+	if isTTY() {
+		typewrite(colorizeJSON(string(b)))
+	} else {
+		fmt.Println(string(b))
 	}
 }
 
-// runEnv prints key=value lines suitable for shell export or dotenv loading.
-// Section-prefixed keys use UPPER_SNAKE_CASE: SECTION_KEY=value.
-// Null values are skipped. Arrays are joined with commas.
-func runEnv(path string) {
-	doc := readAndParse(path)
-
-	type entry struct {
-		key string
-		val string
+func runPretty(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
 	}
+	doc, err := withSpinner("parsing "+styleDim.Render(path), func() (*parser.Document, error) {
+		return parser.Parse(string(data))
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s %s\n", styleErr.Render("✗"), err.Error())
+		os.Exit(1)
+	}
+
+	var sb strings.Builder
+	for _, sec := range doc.Sections {
+		if sec.Name != "" {
+			// Section header
+			header := ""
+			if sec.Emoji != "" {
+				header = styleEmoji.Render(sec.Emoji) + " "
+			}
+			header += styleSec.Render(sec.Name)
+			sb.WriteString(styleJSON.Render("[") + header + styleJSON.Render("]") + "\n")
+		}
+		for _, kv := range sec.KVs {
+			line := "  "
+			if kv.Annotation != "" {
+				line += styleAnnot.Render(kv.Annotation) + " "
+			}
+			line += styleKey.Render(kv.Key) + styleEquals.Render(" = ") + prettyValue(kv.Value)
+			sb.WriteString(line + "\n")
+		}
+		if len(sec.KVs) > 0 {
+			sb.WriteString("\n")
+		}
+	}
+
+	typewrite(strings.TrimRight(sb.String(), "\n") + "\n")
+}
+
+func runEnv(path string) {
+	doc, err := withSpinner("parsing "+styleDim.Render(path), func() (*parser.Document, error) {
+		data, e := os.ReadFile(path)
+		if e != nil {
+			return nil, e
+		}
+		return parser.Parse(string(data))
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s %s\n", styleErr.Render("✗"), err.Error())
+		os.Exit(1)
+	}
+
+	type entry struct{ k, v string }
 	var entries []entry
 
 	for _, sec := range doc.Sections {
 		for _, kv := range sec.KVs {
-			envKey := toEnvKey(sec.Name, kv.Key)
-			envVal := valueToEnvString(kv.Value)
-			if envVal == "" && kv.Value.Kind == parser.KindNull {
+			if kv.Value.Kind == parser.KindNull {
 				continue
 			}
-			entries = append(entries, entry{envKey, envVal})
+			k := toEnvKey(sec.Name, kv.Key)
+			v := valueToEnvString(kv.Value)
+			entries = append(entries, entry{k, v})
 		}
 	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].k < entries[j].k })
 
-	// Sort for deterministic output
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].key < entries[j].key
-	})
-
+	var sb strings.Builder
 	for _, e := range entries {
-		// Shell-quote the value
-		fmt.Printf("%s=%s\n", e.key, shellQuote(e.val))
+		if isTTY() {
+			sb.WriteString(styleEnvKey.Render(e.k) + styleEquals.Render("=") + styleStr.Render(shellQuote(e.v)) + "\n")
+		} else {
+			sb.WriteString(e.k + "=" + shellQuote(e.v) + "\n")
+		}
 	}
+	typewrite(sb.String())
 }
+
+// ── JSON colorizer ────────────────────────────────────────────────────────────
+
+// colorizeJSON applies lipgloss colors to a JSON string.
+func colorizeJSON(input string) string {
+	runes := []rune(input)
+	var sb strings.Builder
+	i := 0
+
+	for i < len(runes) {
+		r := runes[i]
+
+		switch {
+		case r == '"':
+			// Find closing quote, respecting escapes
+			j := i + 1
+			for j < len(runes) {
+				if runes[j] == '\\' {
+					j += 2
+					continue
+				}
+				if runes[j] == '"' {
+					break
+				}
+				j++
+			}
+			s := string(runes[i : j+1])
+			// Look ahead past whitespace for ':' to detect keys
+			k := j + 1
+			for k < len(runes) && (runes[k] == ' ' || runes[k] == '\t') {
+				k++
+			}
+			if k < len(runes) && runes[k] == ':' {
+				sb.WriteString(styleKey.Render(s))
+			} else {
+				sb.WriteString(styleStr.Render(s))
+			}
+			i = j + 1
+
+		case (r >= '0' && r <= '9') || (r == '-' && i+1 < len(runes) && runes[i+1] >= '0' && runes[i+1] <= '9'):
+			j := i + 1
+			for j < len(runes) && (runes[j] >= '0' && runes[j] <= '9' || runes[j] == '.' || runes[j] == 'e' || runes[j] == 'E' || runes[j] == '+' || runes[j] == '-') {
+				j++
+			}
+			sb.WriteString(styleNum.Render(string(runes[i:j])))
+			i = j
+
+		default:
+			rest := string(runes[i:])
+			switch {
+			case strings.HasPrefix(rest, "true"):
+				sb.WriteString(styleBoolT.Render("true"))
+				i += 4
+			case strings.HasPrefix(rest, "false"):
+				sb.WriteString(styleBoolF.Render("false"))
+				i += 5
+			case strings.HasPrefix(rest, "null"):
+				sb.WriteString(styleNull.Render("null"))
+				i += 4
+			default:
+				sb.WriteRune(r)
+				i++
+			}
+		}
+	}
+	return sb.String()
+}
+
+// ── pretty value renderer ─────────────────────────────────────────────────────
+
+func prettyValue(v *parser.Value) string {
+	switch v.Kind {
+	case parser.KindString:
+		return styleStr.Render(`"` + v.Str + `"`)
+	case parser.KindInt:
+		return styleNum.Render(fmt.Sprintf("%d", v.Int))
+	case parser.KindFloat:
+		return styleNum.Render(fmt.Sprintf("%g", v.Float))
+	case parser.KindBool:
+		if v.Bool {
+			return styleBoolT.Render("true")
+		}
+		return styleBoolF.Render("false")
+	case parser.KindNull:
+		return styleNull.Render("null")
+	case parser.KindEmoji:
+		return styleEmoji.Render(v.Str)
+	case parser.KindArray:
+		if len(v.Elems) == 0 {
+			return styleDim.Render("[]")
+		}
+		parts := make([]string, len(v.Elems))
+		for i, e := range v.Elems {
+			parts[i] = prettyValue(e)
+		}
+		return styleJSON.Render("[") + strings.Join(parts, styleJSON.Render(", ")) + styleJSON.Render("]")
+	case parser.KindTable:
+		pairs := make([]string, 0, len(v.Fields))
+		for k, fv := range v.Fields {
+			pairs = append(pairs, styleKey.Render(k)+styleEquals.Render(" = ")+prettyValue(fv))
+		}
+		sort.Strings(pairs)
+		return styleJSON.Render("{ ") + strings.Join(pairs, styleJSON.Render(", ")) + styleJSON.Render(" }")
+	}
+	return ""
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
 
 func toEnvKey(section, key string) string {
 	full := key
 	if section != "" {
 		full = section + "_" + key
 	}
-	// Replace non-alphanumeric with _
 	var sb strings.Builder
 	for _, r := range strings.ToUpper(full) {
 		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
@@ -148,7 +426,6 @@ func valueToEnvString(v *parser.Value) string {
 		}
 		return strings.Join(parts, ",")
 	case parser.KindTable:
-		// Inline tables aren't representable as a single env var; use JSON
 		b, _ := json.Marshal(tableToMap(v))
 		return string(b)
 	}
@@ -159,11 +436,9 @@ func shellQuote(s string) string {
 	if s == "" {
 		return "''"
 	}
-	// If no special chars, no quoting needed
 	safe := true
 	for _, r := range s {
-		if r == ' ' || r == '\t' || r == '"' || r == '\'' || r == '\\' ||
-			r == '$' || r == '`' || r == '!' || r == '\n' {
+		if r == ' ' || r == '\t' || r == '"' || r == '\'' || r == '\\' || r == '$' || r == '`' || r == '\n' {
 			safe = false
 			break
 		}
@@ -174,8 +449,7 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-// docToJSON converts the document to a JSON-serialisable structure.
-func docToJSON(doc *parser.Document) any {
+func docToJSONMap(doc *parser.Document) any {
 	result := map[string]any{}
 	for _, sec := range doc.Sections {
 		pairs := map[string]any{}
@@ -183,16 +457,12 @@ func docToJSON(doc *parser.Document) any {
 			pairs[kv.Key] = valueToAny(kv.Value)
 		}
 		if sec.Name == "" {
-			// Merge root keys into top level
 			for k, v := range pairs {
 				result[k] = v
 			}
 		} else {
-			// Include section emoji metadata if present
 			if sec.Emoji != "" {
-				entry := map[string]any{
-					"_emoji": sec.Emoji,
-				}
+				entry := map[string]any{"_emoji": sec.Emoji}
 				for k, v := range pairs {
 					entry[k] = v
 				}
